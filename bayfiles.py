@@ -1,40 +1,34 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-import os, json, urllib2, poster, sys, urlparse, mysql.connector
+import os, json, urllib3, poster, sys, urlparse, yaml
 
 class BayFiles:
+	''' class to sync bayfiles account with local files '''
+
 	def __init__(self):
-		# arquivos
-		self.path = '/home/dvl/media'
-		#self.path = 'c:/files'
-		self.exts = ['.mkv', '.avi']
+		''' loads config '''
 
-		# bayfiles
-		self.username = 'dvl'
-		self.password = '123456'
-
-		# mysql
-		self.dbhost = 'localhost'
-		self.dbuser = 'root'
-		self.dbpass = 'deadpool'
-		#self.dbpass = 'pwned'
-		self.dbname = 'cdzforever'
+		self.config = yaml.load(open('config.yml', 'r'))
 
 	def login(self):
-		login = json.load(urllib2.urlopen('http://api.bayfiles.net/v1/account/login/{0}/{1}'.format(self.username, self.password)))
+		''' get session token for api '''
+
+		login = json.load(urllib2.urlopen('http://api.bayfiles.net/v1/account/login/{0}/{1}'.format(bf.config['bayfiles']['username'], bf.config['bayfiles']['password'])))
 		
 		if login['error'] == '':
-			return login['session']
+			self.session = login['session']
 		else:
 			sys.exit('[*] Usuário e/ou senha invalido(s)')
 
 
 	def get_remote(self):
+		''' make a list of remote files '''
+
 		files = json.load(urllib2.urlopen('http://api.bayfiles.net/v1/account/files?session={0}'.format(self.session)))
 
 		if files['error'] == '':
-			remote = []
+			remote = list()
 
 			for key, value in files.items():
 				if key != 'error':
@@ -42,25 +36,29 @@ class BayFiles:
 
 			remote.sort()
 
-			return remote
+			self.remote = remote
 		else:
 			sys.exit('[*] Falha ao obter a lista de arquivos remotos')
 
 	def get_local(self):
+		''' make a list of local files '''
 
-		local = []
+		local = list()
 
 		for root, dirs, files in os.walk(self.path):
 			for f in files:
 				name, ext = os.path.splitext(f)
-				if ext in self.exts:
+				if ext in bf.config['system']['exts']:
 					local.append(os.path.join(root, f))
 
 		local.sort()
 
-		return local
+		self.local = local
 
 	def compare(self):
+		''' compare remote with local files and then upload missing ones '''
+		''' TODO exceção se local ou remote vazios '''
+
 		self.count = 0
 		for self.l in self.local:
 			if os.path.basename(self.l) not in self.remote:
@@ -68,6 +66,8 @@ class BayFiles:
 				self.count += 1
 
 	def request_cdn(self):
+		''' get bayfiles cdn for upload '''
+
 		hasurl = False
 		while not hasurl:
 			try: 
@@ -81,6 +81,8 @@ class BayFiles:
 		return upload
 
 	def upload(self, filepath):
+		''' do upload '''
+
 		uploaded = False
 		while not uploaded:
 			try:
@@ -117,51 +119,7 @@ class BayFiles:
 		sys.stdout.write("[!] %d%% %s\r" % (percent, info))
 		sys.stdout.flush()
 
-	def dbconn(self):
-		return mysql.connector.connect(user=self.dbuser, password=self.dbpass, host=self.dbhost, database=self.dbname)
-
-	def sync(self):
-		con = self.dbconn()
-		cursor = con.cursor()
-
-		files = json.load(urllib2.urlopen('http://api.bayfiles.net/v1/account/files?session={0}'.format(self.session)))
-		if files['error'] == '':
-
-			for key, value in files.items():
-				if key != 'error':
-					cursor.execute("SELECT `filename` FROM `files` WHERE `filename` = '{0}'".format(str(value['filename'])))
-					row = cursor.fetchall()
-
-					if len(row):
-						cursor.execute("UPDATE files SET `url` = %s WHERE `filename` = %s", ('http://bayfiles.com/file/{0}/{1}/{2}'.format(key, value['infoToken'], str(value['filename'])), str(value['filename'])))
-					else:
-						cursor.execute("INSERT INTO files (`size`, `sha1`, `filename`, `url`, `subtitle`, `category_id`, `title`) VALUES (%s, %s, %s, %s, NULL, NULL, NULL)", (value['size'], value['sha1'], value['filename'], 'http://bayfiles.com/file/{0}/{1}/{2}'.format(key, value['infoToken'], str(value['filename']))))
-
-		else:
-			sys.exit('[*] Falha ao obter a lista de arquivos remotos')
-
-		cursor.close()
-		con.commit()
-		con.close()
-
 	def logout(self):
+		''' destroy api token '''
+
 		files = json.load(urllib2.urlopen('http://api.bayfiles.net/v1/account/logout?session={0}'.format(self.session)))
-
-if __name__ == "__main__":
-	bf = BayFiles()
-
-	print "[*] Iniciando o script de correção de links"
-	bf.session = bf.login()
-	print "[!] Logado como %s" % bf.username
-	if '--skip-upload' not in sys.argv and '-s' not in sys.argv:
-		bf.local = bf.get_local()
-		print "[!] Preparando os arquivos locais..."
-		bf.remote = bf.get_remote()
-		print "[!] Preparando os arquivos remotos..."
-		print "[!] Total de %r arquivos locais e %r remotos" % (len(bf.local), len(bf.remote))
-		bf.compare()
-		print "[!] Uploads finalizandos, %d arquivos upados" % bf.count
-	print "[!] Atualizando banco de dados com os links"
-	bf.sync()
-	print "[!] Script finalizado, efetuando logout!" 
-	bf.logout()

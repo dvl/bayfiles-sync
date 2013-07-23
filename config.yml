@@ -1,0 +1,16 @@
+system:
+    path: c:/files/test.txt
+    exts: ['.mkv','.avi']
+
+bayfiles:
+    username: dvl
+    password: 123456
+
+# for next release 
+
+database: 
+    engine: mysql       # only mysql suported now
+    host: localhost
+    user: root
+    password: deadpool
+    dbname: files 
