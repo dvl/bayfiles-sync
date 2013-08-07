@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+import sys
 from bayfiles import BayFiles
 
 if __name__ == "__main__":
@@ -18,5 +19,5 @@ if __name__ == "__main__":
 		print "[!] Uploads finalizandos, %d arquivos upados" % bf.count
 	# print "[!] Atualizando banco de dados com os links"
 	# bf.sync()
-	print "[!] Script finalizado, efetuando logout!" 
+	print "[!] Script finalizado, efetuando logout!"
 	bf.logout()
